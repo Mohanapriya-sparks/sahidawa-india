@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+@layer base {
+  @keyframes scan {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(280px); }
+  }
+  
+  .animate-scan {
+    animation: scan 2.5s ease-in-out infinite;
+  }
+}
+
+@theme {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
