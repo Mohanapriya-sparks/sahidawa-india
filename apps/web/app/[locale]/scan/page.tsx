@@ -342,7 +342,7 @@ function ErrorResult({ message, onRetry }: { message: string; onRetry: () => voi
 
 function ResultActions({ onScanAgain, onShare }: { onScanAgain: () => void; onShare: () => void }) {
     return (
-        <div className="grid w-full grid-cols-1 gap-3">
+        <div className="no-print grid w-full grid-cols-1 gap-3">
             <button
                 onClick={onScanAgain}
                 className="w-full rounded-2xl bg-slate-900 py-4 font-bold text-white shadow-lg shadow-slate-900/20 transition-colors hover:bg-slate-800"
