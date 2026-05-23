@@ -22,7 +22,12 @@ import {
 } from "./lib/languages";
 import { formatVoiceShareReport } from "./lib/report";
 import { getPreferredRecordingMimeType, supportsAudioRecording } from "./lib/recording";
-import { shouldReviewTranscription, transcribeRecordedAudio } from "./lib/transcription";
+import {
+    shouldReviewTranscription,
+    transcribeRecordedAudio,
+    type VoiceTranscriptionPayload,
+} from "./lib/transcription";
+import { createVoiceStreamingSession } from "./lib/streaming";
 import {
     VoiceErrorPanel,
     VoiceIntroPanel,
@@ -39,7 +44,7 @@ import {
     subscribeToMediaQueryChange,
     type StoredVoiceAnimationPreference,
 } from "./lib/audio";
-import type { VoiceErrorState, VoiceStep, VoiceTriageResult } from "./types";
+import type { VoiceErrorState, VoiceStep, VoiceStreamingStatus, VoiceTriageResult } from "./types";
 
 const DEFAULT_FLOW_CONFIDENCE = getConfidenceMeta(undefined);
 const VOICE_ANIMATION_STORAGE_KEY = "sahidawa.voice.animations";
@@ -113,22 +118,38 @@ export default function VoiceTriagePage() {
     const [animationsEnabled, setAnimationsEnabled] = useState(true);
     const [isVisualizerFading, setIsVisualizerFading] = useState(false);
     const [srAnnouncement, setSrAnnouncement] = useState("");
+    const [streamingStatus, setStreamingStatus] = useState<VoiceStreamingStatus>("idle");
 
     const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const streamingSessionRef = useRef<ReturnType<typeof createVoiceStreamingSession> | null>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
     const recordingChunksRef = useRef<Blob[]>([]);
+    const pendingRecordedBlobRef = useRef<Blob | null>(null);
     const latestTranscriptRef = useRef("");
     const latestDisplayedTranscriptRef = useRef("");
     const latestConfidenceRef = useRef<number | undefined>(undefined);
     const didHandleRecognitionEndRef = useRef(false);
     const manualStopRef = useRef(false);
+    const streamingStatusRef = useRef<VoiceStreamingStatus>("idle");
+    const isStreamingStopRequestedRef = useRef(false);
     const startSessionIdRef = useRef(0);
     const autoSpokenKeyRef = useRef("");
     const panelRef = useRef<HTMLDivElement | null>(null);
 
     const selectedLanguageOption = getVoiceLanguageOption(selectedLanguage);
     const resultLanguageOption = getVoiceLanguageOption(resultLanguageCode ?? selectedLanguage);
+
+    function setStreamingStatusValue(nextStatus: VoiceStreamingStatus) {
+        streamingStatusRef.current = nextStatus;
+        setStreamingStatus(nextStatus);
+    }
+
+    function closeStreamingSession() {
+        const session = streamingSessionRef.current;
+        streamingSessionRef.current = null;
+        session?.close();
+    }
 
     function detachRecognitionHandlers(recognition: SpeechRecognitionLike | null) {
         if (!recognition) {
@@ -187,6 +208,7 @@ export default function VoiceTriagePage() {
             const mediaRecorder = mediaRecorderRef.current;
             mediaRecorderRef.current = null;
             detachMediaRecorderHandlers(mediaRecorder);
+            closeStreamingSession();
             if (mediaRecorder && mediaRecorder.state !== "inactive") {
                 mediaRecorder.stop();
             }
@@ -300,18 +322,22 @@ export default function VoiceTriagePage() {
         }
 
         recordingChunksRef.current = [];
+        pendingRecordedBlobRef.current = null;
         latestTranscriptRef.current = "";
         latestDisplayedTranscriptRef.current = "";
         latestConfidenceRef.current = undefined;
         didHandleRecognitionEndRef.current = false;
         manualStopRef.current = false;
+        isStreamingStopRequestedRef.current = false;
         autoSpokenKeyRef.current = "";
+        closeStreamingSession();
 
         setIsListening(false);
         setIsSpeaking(false);
         setIsVisualizerFading(false);
         setTranscript("");
         setConfidence(DEFAULT_FLOW_CONFIDENCE);
+        setStreamingStatusValue("idle");
         setResult(null);
         setResultLanguageCode(null);
         setError(null);
@@ -352,13 +378,61 @@ export default function VoiceTriagePage() {
         void analyseTranscript(normalizedTranscript, confidenceMeta, emergencyResult.matches);
     }
 
-    async function handleRecordedAudioStop(mediaBlob: Blob) {
-        if (!mediaBlob.size) {
+    async function consumeTranscription(transcription: VoiceTranscriptionPayload) {
+        const normalizedTranscript = transcription.transcript.trim();
+
+        pendingRecordedBlobRef.current = null;
+        closeStreamingSession();
+        setStreamingStatusValue("idle");
+
+        if (!normalizedTranscript) {
             setError(getRecognitionErrorState("no-speech", t));
             setStep("error");
             return;
         }
 
+        const confidenceMeta = getConfidenceMeta(undefined);
+        const emergencyResult = detectEmergencyKeywords(normalizedTranscript);
+
+        setTranscript(normalizedTranscript);
+        setConfidence(confidenceMeta);
+        setEmergencyMatches(emergencyResult.matches);
+        setError(null);
+
+        if (
+            shouldReviewTranscription(normalizedTranscript, {
+                selectedLanguage,
+                detectedLanguage: transcription.language,
+            })
+        ) {
+            setStep("review");
+            return;
+        }
+
+        await analyseTranscript(normalizedTranscript, confidenceMeta, emergencyResult.matches);
+    }
+
+    async function fallbackToRecordedUpload() {
+        const pendingRecordedBlob = pendingRecordedBlobRef.current;
+        if (!pendingRecordedBlob) {
+            return;
+        }
+
+        pendingRecordedBlobRef.current = null;
+        await handleRecordedAudioStop(pendingRecordedBlob);
+    }
+
+    async function handleRecordedAudioStop(mediaBlob: Blob) {
+        if (!mediaBlob.size) {
+            pendingRecordedBlobRef.current = null;
+            closeStreamingSession();
+            setStreamingStatusValue("idle");
+            setError(getRecognitionErrorState("no-speech", t));
+            setStep("error");
+            return;
+        }
+
+        pendingRecordedBlobRef.current = null;
         setStep("processing");
         setError(null);
 
@@ -367,34 +441,10 @@ export default function VoiceTriagePage() {
                 type: mediaBlob.type || "audio/webm",
             });
             const transcription = await transcribeRecordedAudio(file, selectedLanguage);
-            const normalizedTranscript = transcription.transcript.trim();
-
-            if (!normalizedTranscript) {
-                setError(getRecognitionErrorState("no-speech", t));
-                setStep("error");
-                return;
-            }
-
-            const confidenceMeta = getConfidenceMeta(undefined);
-            const emergencyResult = detectEmergencyKeywords(normalizedTranscript);
-
-            setTranscript(normalizedTranscript);
-            setConfidence(confidenceMeta);
-            setEmergencyMatches(emergencyResult.matches);
-            setError(null);
-
-            if (
-                shouldReviewTranscription(normalizedTranscript, {
-                    selectedLanguage,
-                    detectedLanguage: transcription.language,
-                })
-            ) {
-                setStep("review");
-                return;
-            }
-
-            await analyseTranscript(normalizedTranscript, confidenceMeta, emergencyResult.matches);
+            await consumeTranscription(transcription);
         } catch (transcriptionError) {
+            closeStreamingSession();
+            setStreamingStatusValue("idle");
             setError({
                 title: t("errors.generic_title"),
                 message:
@@ -571,6 +621,7 @@ export default function VoiceTriagePage() {
 
     function stopListening() {
         manualStopRef.current = true;
+        isStreamingStopRequestedRef.current = true;
         setIsListening(false);
         setIsVisualizerFading(true);
 
@@ -585,6 +636,8 @@ export default function VoiceTriagePage() {
 
         if (!recognitionRef.current) {
             startSessionIdRef.current += 1;
+            closeStreamingSession();
+            setStreamingStatusValue("idle");
             clearAudioStream();
             setIsVisualizerFading(false);
             setStep("initial");
@@ -595,6 +648,8 @@ export default function VoiceTriagePage() {
     }
 
     function startSpeechRecognitionFallback() {
+        closeStreamingSession();
+        setStreamingStatusValue("idle");
         const SpeechRecognition = getSpeechRecognitionConstructor(window);
         if (!SpeechRecognition) {
             setError(getRecognitionErrorState("unsupported", t));
@@ -714,19 +769,23 @@ export default function VoiceTriagePage() {
         const mediaRecorder = mediaRecorderRef.current;
         mediaRecorderRef.current = null;
         detachMediaRecorderHandlers(mediaRecorder);
+        closeStreamingSession();
         if (mediaRecorder && mediaRecorder.state !== "inactive") {
             mediaRecorder.stop();
         }
 
         recordingChunksRef.current = [];
+        pendingRecordedBlobRef.current = null;
         latestTranscriptRef.current = "";
         latestDisplayedTranscriptRef.current = "";
         latestConfidenceRef.current = undefined;
         didHandleRecognitionEndRef.current = false;
         manualStopRef.current = false;
+        isStreamingStopRequestedRef.current = false;
 
         setTranscript("");
         setConfidence(DEFAULT_FLOW_CONFIDENCE);
+        setStreamingStatusValue("idle");
         setResult(null);
         setError(null);
         setEmergencyMatches([]);
@@ -783,15 +842,53 @@ export default function VoiceTriagePage() {
         setActiveAudioStream(nextAudioStream);
         setStep("listening");
 
+        if (typeof window.WebSocket === "function") {
+            try {
+                streamingSessionRef.current = createVoiceStreamingSession({
+                    language: selectedLanguage,
+                    mimeType: mediaRecorderInstance.mimeType || "audio/webm",
+                    onPartial: (payload) => {
+                        setStreamingStatusValue("streaming");
+                        setTranscript(payload.transcript);
+                    },
+                    onFinal: (payload) => {
+                        void consumeTranscription(payload);
+                    },
+                    onFallback: () => {
+                        closeStreamingSession();
+                        setStreamingStatusValue("fallback");
+                        if (isStreamingStopRequestedRef.current) {
+                            void fallbackToRecordedUpload();
+                        }
+                    },
+                });
+                setStreamingStatusValue("connecting");
+            } catch {
+                closeStreamingSession();
+                setStreamingStatusValue("fallback");
+            }
+        } else {
+            setStreamingStatusValue("fallback");
+        }
+
         mediaRecorderInstance.onstart = () => {
             setIsListening(true);
             setIsVisualizerFading(false);
             setStep("listening");
         };
 
-        mediaRecorderInstance.ondataavailable = (event) => {
+        mediaRecorderInstance.ondataavailable = async (event) => {
             if (event.data.size > 0) {
                 recordingChunksRef.current.push(event.data);
+            }
+
+            if (event.data.size > 0 && streamingSessionRef.current) {
+                try {
+                    await streamingSessionRef.current.sendChunk(event.data);
+                } catch {
+                    closeStreamingSession();
+                    setStreamingStatusValue("fallback");
+                }
             }
         };
 
@@ -800,6 +897,9 @@ export default function VoiceTriagePage() {
                 mediaRecorderRef.current = null;
             }
             detachMediaRecorderHandlers(mediaRecorderInstance);
+            closeStreamingSession();
+            setStreamingStatusValue("idle");
+            pendingRecordedBlobRef.current = null;
             clearAudioStream();
             setIsListening(false);
             setIsVisualizerFading(false);
@@ -821,17 +921,27 @@ export default function VoiceTriagePage() {
             clearAudioStream();
             setIsListening(false);
             setIsVisualizerFading(false);
+            pendingRecordedBlobRef.current = mediaBlob;
+
+            if (streamingSessionRef.current && streamingStatusRef.current !== "fallback") {
+                setStep("processing");
+                setError(null);
+                streamingSessionRef.current.finish();
+                return;
+            }
 
             await handleRecordedAudioStop(mediaBlob);
         };
 
         try {
-            mediaRecorderInstance.start();
+            mediaRecorderInstance.start(750);
         } catch {
             if (mediaRecorderRef.current === mediaRecorderInstance) {
                 mediaRecorderRef.current = null;
             }
             detachMediaRecorderHandlers(mediaRecorderInstance);
+            closeStreamingSession();
+            setStreamingStatusValue("idle");
             stopMediaStream(nextAudioStream);
             setActiveAudioStream(null);
             startSpeechRecognitionFallback();
@@ -848,6 +958,16 @@ export default function VoiceTriagePage() {
     }
 
     const showMicFooter = step === "initial" || step === "listening";
+    const listeningHelperLabel =
+        step !== "listening"
+            ? undefined
+            : streamingStatus === "connecting"
+              ? t("streaming_connecting_hint")
+              : streamingStatus === "streaming"
+                ? t("streaming_live_hint")
+                : streamingStatus === "fallback"
+                  ? t("streaming_fallback_hint")
+                  : undefined;
 
     return (
         <div className="relative flex min-h-screen flex-col overflow-hidden bg-slate-50 font-sans">
@@ -939,6 +1059,7 @@ export default function VoiceTriagePage() {
                         <VoiceListeningPanel
                             transcript={transcript || t("listening_placeholder")}
                             statusLabel={t("listening_status")}
+                            helperLabel={listeningHelperLabel}
                             stream={audioStream}
                             isListening={isListening}
                             isFading={isVisualizerFading}

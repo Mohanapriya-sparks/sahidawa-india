@@ -78,6 +78,7 @@ export function VoiceIntroPanel({
 export function VoiceListeningPanel({
     transcript,
     statusLabel,
+    helperLabel,
     stream,
     isListening,
     isFading,
@@ -90,6 +91,7 @@ export function VoiceListeningPanel({
 }: {
     transcript: string;
     statusLabel: string;
+    helperLabel?: string;
     stream: MediaStream | null;
     isListening: boolean;
     isFading: boolean;
@@ -123,6 +125,9 @@ export function VoiceListeningPanel({
             <p className="text-sm font-bold tracking-widest text-emerald-600 uppercase">
                 {statusLabel}
             </p>
+            {helperLabel ? (
+                <p className="text-center text-sm font-medium text-slate-500">{helperLabel}</p>
+            ) : null}
         </div>
     );
 }
