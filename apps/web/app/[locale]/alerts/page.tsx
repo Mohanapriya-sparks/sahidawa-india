@@ -1,12 +1,11 @@
-import React from "react";
-import { Activity, ArrowLeft, Filter, AlertTriangle, AlertCircle } from "lucide-react";
+"use client";
+import React, { useEffect, useState } from "react";
+import { Activity, ArrowLeft, Filter, AlertTriangle, AlertCircle, Search } from "lucide-react";
 import Link from "next/link";
-import { supabase } from "@/lib/supabase";
 import { Globe } from "lucide-react";
 import RecallPushSubscriber from "@/components/alerts/RecallPushSubscriber";
 import { LiveMessage } from "@/components/ui/LiveMessage";
-
-export const revalidate = 0;
+import { API_BASE } from "@/lib/api";
 
 function formatRelativeTime(dateString: string | null): string {
     if (!dateString) return "Recent";
@@ -31,15 +30,48 @@ function formatRelativeTime(dateString: string | null): string {
     }
 }
 
-export default async function FullAlertsLogPage() {
-    // Fetch ALL rows from medicines that fit alert criteria
-    const { data: allAlerts, error } = await supabase
-        .from("medicines")
-        .select("*")
-        .or(
-            "is_counterfeit_alert.eq.true,cdsco_approval_status.eq.recalled,cdsco_approval_status.eq.banned, brand_name.eq.SYSTEM_UPDATE"
-        )
-        .order("created_at", { ascending: false });
+export default function FullAlertsLogPage() {
+    const [allAlerts, setAllAlerts] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState(false);
+    
+    // Filters
+    const [brandSearch, setBrandSearch] = useState("");
+    const [regionSearch, setRegionSearch] = useState("");
+    const [page, setPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+
+    const fetchAlerts = async () => {
+        setLoading(true);
+        setError(false);
+        try {
+            // Include search parameters if we had them supported in API, 
+            // but since API just has pagination, we fetch and then filter locally 
+            // OR we'd ideally pass them to API. For now, we'll fetch a larger limit to filter locally,
+            // or pass them down (assuming the backend gets updated to support them).
+            const res = await fetch(`${API_BASE}/api/v1/alerts?page=${page}&limit=50`);
+            if (!res.ok) throw new Error("Failed to fetch");
+            const data = await res.json();
+            setAllAlerts(data.data || []);
+            setTotalCount(data.totalCount || 0);
+        } catch (err) {
+            console.error(err);
+            setError(true);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchAlerts();
+    }, [page]);
+
+    // Apply local filtration
+    const filteredAlerts = allAlerts.filter(alert => {
+        const brandMatch = (alert.brand_name || alert.brand || "").toLowerCase().includes(brandSearch.toLowerCase());
+        const regionMatch = (alert.state_district || "").toLowerCase().includes(regionSearch.toLowerCase());
+        return brandMatch && regionMatch;
+    });
 
     return (
         <div className="mx-auto max-w-5xl px-4 py-8 text-(--color-text-primary)">
@@ -77,7 +109,37 @@ export default async function FullAlertsLogPage() {
                 </span>
                 <div className="inline-flex items-center gap-2 self-start rounded-xl border border-(--color-border-muted) bg-(--color-surface-page) px-4 py-2 text-sm font-bold text-(--color-text-primary) shadow-sm md:self-auto">
                     <Filter size={16} />
-                    Total Count: {allAlerts?.length || 0}
+                    Total Count: {totalCount}
+                </div>
+            </div>
+
+            <RecallPushSubscriber />
+
+            {/* Filters Section */}
+            <div className="mb-6 flex flex-col gap-4 md:flex-row">
+                <div className="relative flex-1">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <Search size={18} className="text-slate-400" />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search by Brand Name..."
+                        value={brandSearch}
+                        onChange={(e) => setBrandSearch(e.target.value)}
+                        className="block w-full rounded-xl border border-slate-300 bg-white p-3 pl-10 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    />
+                </div>
+                <div className="relative flex-1">
+                    <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3">
+                        <Globe size={18} className="text-slate-400" />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Filter by State/District..."
+                        value={regionSearch}
+                        onChange={(e) => setRegionSearch(e.target.value)}
+                        className="block w-full rounded-xl border border-slate-300 bg-white p-3 pl-10 text-sm shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+                    />
                 </div>
             </div>
 
@@ -90,14 +152,16 @@ export default async function FullAlertsLogPage() {
                 </LiveMessage>
             )}
 
-            <RecallPushSubscriber />
-
-            <div role="feed" aria-busy="false" className="space-y-4">
-                {allAlerts && allAlerts.length > 0 ? (
-                    allAlerts.map((alert) => {
-                        const isSystem = alert.brand_name === "SYSTEM_UPDATE";
+            <div role="feed" aria-busy={loading} className="space-y-4">
+                {loading ? (
+                    <div className="rounded-2xl border border-(--color-border-muted) bg-(--color-surface-page) py-16 text-center font-medium text-(--color-text-muted)">
+                        Loading alerts...
+                    </div>
+                ) : filteredAlerts.length > 0 ? (
+                    filteredAlerts.map((alert) => {
+                        const isSystem = alert.brand_name === "SYSTEM_UPDATE" || alert.brand === "SYSTEM_UPDATE";
                         const isCritical =
-                            alert.cdsco_approval_status === "banned" || alert.is_counterfeit_alert;
+                            alert.cdsco_approval_status === "banned" || alert.is_counterfeit_alert || alert.alert_type === "Banned";
 
                         return (
                             <div
@@ -138,7 +202,7 @@ export default async function FullAlertsLogPage() {
                                     <div className="flex items-start justify-between gap-2">
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                                             <h4 className="leading-tight font-bold text-(--color-text-primary)">
-                                                {isSystem ? "System Update" : alert.brand_name}
+                                                {isSystem ? "System Update" : (alert.brand_name || alert.brand)}
                                             </h4>
                                             {!isSystem && (
                                                 <span
@@ -148,7 +212,7 @@ export default async function FullAlertsLogPage() {
                                                             : "dark:text-orange-450 bg-orange-50 text-orange-600 dark:bg-orange-950/30"
                                                     }`}
                                                 >
-                                                    {alert.cdsco_approval_status}
+                                                    {alert.cdsco_approval_status || alert.alert_type || "NSQ"}
                                                 </span>
                                             )}
                                         </div>
@@ -158,16 +222,16 @@ export default async function FullAlertsLogPage() {
                                     </div>
 
                                     <p className="mt-1 text-sm leading-snug font-medium text-(--color-text-secondary)">
-                                        {alert.composition}
+                                        {alert.composition || alert.reason}
                                     </p>
 
                                     {/* Render metadata bottom line layout only if it's not a system update card */}
                                     {!isSystem && (
-                                        <div className="mt-2 flex items-center gap-3 text-[11px] font-semibold text-(--color-text-muted)">
+                                        <div className="mt-2 flex items-center flex-wrap gap-3 text-[11px] font-semibold text-(--color-text-muted)">
                                             <span>
                                                 Batch:{" "}
                                                 <span className="font-bold text-(--color-text-primary)">
-                                                    {alert.batch_number}
+                                                    {alert.batch_number || alert.batch}
                                                 </span>
                                             </span>
                                             <span>•</span>
@@ -177,6 +241,17 @@ export default async function FullAlertsLogPage() {
                                                     {alert.manufacturer}
                                                 </span>
                                             </span>
+                                            {alert.state_district && (
+                                                <>
+                                                    <span>•</span>
+                                                    <span>
+                                                        Region:{" "}
+                                                        <span className="font-bold text-(--color-text-primary)">
+                                                            {alert.state_district}
+                                                        </span>
+                                                    </span>
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -185,9 +260,25 @@ export default async function FullAlertsLogPage() {
                     })
                 ) : (
                     <div className="rounded-2xl border border-(--color-border-muted) bg-(--color-surface-page) py-16 text-center font-medium text-(--color-text-muted)">
-                        No health alerts currently flagged inside the registry database.
+                        No health alerts matching your criteria were found.
                     </div>
                 )}
+            </div>
+            
+            <div className="mt-6 flex justify-center gap-4">
+                <button
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold disabled:opacity-50"
+                >
+                    Previous
+                </button>
+                <button
+                    onClick={() => setPage(p => p + 1)}
+                    className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold"
+                >
+                    Next
+                </button>
             </div>
         </div>
     );
