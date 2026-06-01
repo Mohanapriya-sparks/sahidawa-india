@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { z } from "zod";
 import { supabase } from "../db/client";
 import { verifyLimiter } from "../middleware/rateLimit";
-import { requireAuth } from "../middleware/auth";
+import { optionalAuth } from "../middleware/auth";
 
 const ALLOWED_ORIGINS = (
     process.env.ALLOWED_ORIGINS
@@ -102,7 +102,7 @@ const verifySchema = z.object({
  *                   type: string
  *                   example: "Database lookup failed"
  */
-router.post("/", requireAuth, verifyLimiter, (req: Request, res: Response, next) => {
+router.post("/", optionalAuth, verifyLimiter, (req: Request, res: Response, next) => {
     if (!isAllowedOrigin(req)) {
         res.status(403).json({ error: "Access denied: unrecognized origin" });
         return;
