@@ -58,10 +58,10 @@ export default async function LocaleLayout({
     }
 
     const messages = await getMessages();
+    const isRtl = ['ur', 'ks'].includes(locale);
 
     return (
-        <html lang={locale} suppressHydrationWarning>
-            {/* REPLACE YOUR OLD BODY TAG WITH THIS ONE: */}
+        <html lang={locale} dir={isRtl ? "rtl" : "ltr"} suppressHydrationWarning>
             <body className="flex min-h-screen flex-col bg-(--color-surface-page) text-(--color-text-primary) transition-colors duration-300">
                 <ServiceWorkerProvider>
                     <ThemeProvider>
