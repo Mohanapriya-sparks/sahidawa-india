@@ -38,11 +38,11 @@ The `MAX_MEDICINE_NAME_LENGTH` was set to `200` characters. This value was chose
 To re-implement a similar rate limiting and input length validation feature from scratch, a contributor would typically follow these steps:
 
 1.  **Define a new rate limiter in `apps/api/src/middleware/rateLimit.ts`:**
-    *   Import `rateLimit` from `express-rate-limit`.
-    *   Declare and export a new constant, e.g., `export const newFeatureLimiter = rateLimit({ ... });`.
-    *   Configure `windowMs` (e.g., `15 * 60 * 1000` for 15 minutes) and `max` (e.g., `30` requests per window).
-    *   Set `standardHeaders: true` and `legacyHeaders: false`.
-    *   Implement a custom `handler` function to return a `429 Too Many Requests` status with a JSON error message, for example:
+    - Import `rateLimit` from `express-rate-limit`.
+    - Declare and export a new constant, e.g., `export const newFeatureLimiter = rateLimit({ ... });`.
+    - Configure `windowMs` (e.g., `15 * 60 * 1000` for 15 minutes) and `max` (e.g., `30` requests per window).
+    - Set `standardHeaders: true` and `legacyHeaders: false`.
+    - Implement a custom `handler` function to return a `429 Too Many Requests` status with a JSON error message, for example:
         ```typescript
         handler: (_req, res) => {
             res.status(429).json({
@@ -50,29 +50,36 @@ To re-implement a similar rate limiting and input length validation feature from
             });
         },
         ```
-    *   Add a clear comment explaining the purpose and configuration of the new limiter.
+    - Add a clear comment explaining the purpose and configuration of the new limiter.
 
 2.  **Apply the rate limiter to the target route in its respective route file (e.g., `apps/api/src/routes/yourFeature.ts`):**
-    *   Import the newly created limiter: `import { newFeatureLimiter } from "../middleware/rateLimit";`.
-    *   Insert the limiter as middleware in the route definition, ensuring it is placed before the main asynchronous handler function:
+    - Import the newly created limiter: `import { newFeatureLimiter } from "../middleware/rateLimit";`.
+    - Insert the limiter as middleware in the route definition, ensuring it is placed before the main asynchronous handler function:
         ```typescript
-        router.post("/your-endpoint", newFeatureLimiter, async (req: Request, res: Response): Promise<void> => {
-            // ... existing route logic
-        });
+        router.post(
+            "/your-endpoint",
+            newFeatureLimiter,
+            async (req: Request, res: Response): Promise<void> => {
+                // ... existing route logic
+            }
+        );
         ```
 
 3.  **Implement input length validation within the route handler:**
-    *   Within the same route file, define a constant for the maximum allowed length for the specific input parameter, e.g.:
+    - Within the same route file, define a constant for the maximum allowed length for the specific input parameter, e.g.:
         ```typescript
         const MAX_INPUT_PARAM_LENGTH = 200; // Add an explanatory comment about the rationale
         ```
-    *   Inside the route handler function, after extracting the input parameter from `req.body` and performing any initial type or presence checks, add an `if` condition to validate its length:
+    - Inside the route handler function, after extracting the input parameter from `req.body` and performing any initial type or presence checks, add an `if` condition to validate its length:
+
         ```typescript
         const { inputParam } = req.body;
 
         // Existing validation for type and presence (if applicable)
         if (typeof inputParam !== "string" || inputParam.trim() === "") {
-            res.status(400).json({ error: "inputParam is required and must be a non-empty string" });
+            res.status(400).json({
+                error: "inputParam is required and must be a non-empty string",
+            });
             return;
         }
 
@@ -87,7 +94,8 @@ To re-implement a similar rate limiting and input length validation feature from
         // Proceed with resource-intensive operations only if validation passes
         // ... call service functions
         ```
-    *   Ensure this length check is performed *before* any computationally expensive operations that would process the input parameter.
+
+    - Ensure this length check is performed _before_ any computationally expensive operations that would process the input parameter.
 
 ## Impact on System Architecture
 
@@ -99,14 +107,14 @@ Architecturally, this reinforces our "defense in depth" strategy by adding a cru
 
 The effectiveness of this change was thoroughly verified through a series of tests covering both the rate limiting and input length validation functionalities:
 
-*   **Rate Limiting Verification:**
-    *   **Requests within Limit:** We simulated multiple requests (e.g., 29 requests) to `POST /api/v1/lasa/check` from the same IP address within a 15-minute window. All these requests successfully passed through and returned a `200 OK` status, as expected.
-    *   **Exceeding Limit:** A 31st request from the same IP within the 15-minute window was sent. This request was correctly rejected with a `429 Too Many Requests` status and the custom error message: `{ error: "Too many LASA check requests. Please try again later." }`.
-    *   **Limit Reset:** After the 15-minute window elapsed, subsequent requests from the same IP were verified to pass through successfully, confirming that the rate limit correctly resets.
+- **Rate Limiting Verification:**
+    - **Requests within Limit:** We simulated multiple requests (e.g., 29 requests) to `POST /api/v1/lasa/check` from the same IP address within a 15-minute window. All these requests successfully passed through and returned a `200 OK` status, as expected.
+    - **Exceeding Limit:** A 31st request from the same IP within the 15-minute window was sent. This request was correctly rejected with a `429 Too Many Requests` status and the custom error message: `{ error: "Too many LASA check requests. Please try again later." }`.
+    - **Limit Reset:** After the 15-minute window elapsed, subsequent requests from the same IP were verified to pass through successfully, confirming that the rate limit correctly resets.
 
-*   **Input Length Validation Verification:**
-    *   **Valid Length:** A `medicineName` string containing exactly 200 characters was sent in the request body. This request was processed successfully by the endpoint, returning a `200 OK` status.
-    *   **Exceeding Length:** A `medicineName` string with 201 characters was sent. This request was correctly rejected with a `400 Bad Request` status and the specific error message: `{ error: "medicineName must not exceed 200 characters" }`.
-    *   **Existing Validation:** Requests with a missing `medicineName` parameter or a `medicineName` that was not a string (e.g., `null`, a number) were confirmed to still return a `400 Bad Request` status, ensuring that the new length validation did not interfere with pre-existing input type and presence checks.
+- **Input Length Validation Verification:**
+    - **Valid Length:** A `medicineName` string containing exactly 200 characters was sent in the request body. This request was processed successfully by the endpoint, returning a `200 OK` status.
+    - **Exceeding Length:** A `medicineName` string with 201 characters was sent. This request was correctly rejected with a `400 Bad Request` status and the specific error message: `{ error: "medicineName must not exceed 200 characters" }`.
+    - **Existing Validation:** Requests with a missing `medicineName` parameter or a `medicineName` that was not a string (e.g., `null`, a number) were confirmed to still return a `400 Bad Request` status, ensuring that the new length validation did not interfere with pre-existing input type and presence checks.
 
 These comprehensive tests confirm that both the `lasaLimiter` and the `MAX_MEDICINE_NAME_LENGTH` validation are functioning precisely as intended, delivering the desired security and performance enhancements to the SahiDawa API.
