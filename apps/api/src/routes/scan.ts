@@ -1,8 +1,13 @@
 import { Router, Request, Response } from "express";
 import multer from "multer";
+import fs from "fs";
+import path from "path";
+import crypto from "crypto";
 import logger from "../utils/logger";
 import { supabase } from "../db/client";
 import { getMlServiceUrl, MISSING_ML_SERVICE_URL_MESSAGE } from "../config/mlService";
+import { validateUploadSize } from "../middleware/uploadSizeValidator";
+import { uploadRateLimiter } from "../middleware/uploadRateLimit";
 
 /**
  * Escape ILIKE wildcard characters in a string derived from untrusted input
@@ -26,9 +31,22 @@ const ALLOWED_MIME_TYPES = new Set([
     "image/bmp",
 ]);
 
+const UPLOAD_DIR = path.join(__dirname, "../../temp-uploads");
+if (!fs.existsSync(UPLOAD_DIR)) {
+    fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+}
+
 // Security: reject non-image uploads before they reach the ML container
 const upload = multer({
-    storage: multer.memoryStorage(),
+    storage: multer.diskStorage({
+        destination: (_req, _file, cb) => {
+            cb(null, UPLOAD_DIR);
+        },
+        filename: (_req, file, cb) => {
+            const uniqueName = `${crypto.randomUUID()}-${Date.now()}${path.extname(file.originalname)}`;
+            cb(null, uniqueName);
+        },
+    }),
     limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
     fileFilter(_req, file, cb) {
         if (ALLOWED_MIME_TYPES.has(file.mimetype)) {
@@ -182,9 +200,11 @@ function calculateAdvancedMatchScore(ocrText: string, candidate: string): number
  *                 details:
  *                   type: string
  */
-router.post("/extract", (req: Request, res: Response) => {
+router.post("/extract", uploadRateLimiter, validateUploadSize, (req: Request, res: Response) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (upload.single("file") as any)(req, res, async (multerErr: unknown) => {
+        let tempFilePath: string | undefined;
+
         if (multerErr) {
             const msg = multerErr instanceof Error ? multerErr.message : "File upload error";
             logger.warn(`File upload rejected: ${msg}`);
@@ -196,10 +216,14 @@ router.post("/extract", (req: Request, res: Response) => {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const file: Express.Multer.File | undefined = (req as any).file;
 
-        if (!file) {
+        if (!file || !file.filename) {
             res.status(400).json({ error: "No image file provided." });
             return;
         }
+
+        // Security: Prevent path traversal (CodeQL) by ensuring the path only resolves within UPLOAD_DIR
+        const safeFilename = path.basename(file.filename);
+        tempFilePath = path.join(UPLOAD_DIR, safeFilename);
 
         const mlServiceUrl = getMlServiceUrl();
         if (!mlServiceUrl) {
@@ -219,7 +243,8 @@ router.post("/extract", (req: Request, res: Response) => {
 
         try {
             const formData = new FormData();
-            const blob = new Blob([new Uint8Array(file.buffer)], {
+            const fileBuffer = fs.readFileSync(tempFilePath);
+            const blob = new Blob([new Uint8Array(fileBuffer)], {
                 type: file.mimetype,
             });
             formData.append("file", blob, file.originalname);
@@ -286,10 +311,10 @@ router.post("/extract", (req: Request, res: Response) => {
 
             // Expiry parsing
             const expiryPatterns = [
-                /(?:EXP\.?(?:\s*DATE)?|EXPIRY(?:\s*DATE)?)\s*[:\-\.\s]*([0-9]{2})\s*[\/\-]\s*([0-9]{4})/i,
-                /(?:EXP\.?(?:\s*DATE)?|EXPIRY(?:\s*DATE)?)\s*[:\-\.\s]*([0-9]{2})\s*[\/\-]\s*([0-9]{2})\b/i,
-                /\b([0-9]{2})\s*[\/\-]\s*([0-9]{4})\b/,
-                /\b([0-9]{2})\s*[\/\-]\s*([0-9]{2})\b/,
+                /(?:EXP\.?(?:\s*DATE)?|EXPIRY(?:\s*DATE)?)\s*[:\-\.\s]*(0[1-9]|1[0-2])\s*[\/\-]\s*([0-9]{4})/i,
+                /(?:EXP\.?(?:\s*DATE)?|EXPIRY(?:\s*DATE)?)\s*[:\-\.\s]*(0[1-9]|1[0-2])\s*[\/\-]\s*([0-9]{2})\b/i,
+                /\b(0[1-9]|1[0-2])\s*[\/\-]\s*([0-9]{4})\b/,
+                /\b(0[1-9]|1[0-2])\s*[\/\-]\s*([0-9]{2})\b/,
             ];
             let parsedExpiry: string | null = null;
             for (const pattern of expiryPatterns) {
@@ -357,6 +382,8 @@ router.post("/extract", (req: Request, res: Response) => {
 
                     if (dbError) {
                         logger.error(`Database error fetching medicines: ${dbError.message}`);
+                        res.status(500).json({ error: "Database error fetching medicines" });
+                        return;
                     } else if (dbMedicines) {
                         brandNames = Array.from(
                             new Set(
@@ -372,6 +399,8 @@ router.post("/extract", (req: Request, res: Response) => {
                 }
             } catch (dbErr) {
                 logger.error(`Failed to fetch brand/generic names from DB: ${dbErr}`);
+                res.status(500).json({ error: "Database error fetching medicines" });
+                return;
             }
 
             // No hardcoded fallback — if DB has no match, we return unmatched result.
@@ -485,6 +514,10 @@ router.post("/extract", (req: Request, res: Response) => {
                         logger.error(
                             `Database lookup error for match ${matchedName}: ${lookupError.message}`
                         );
+                        res.status(500).json({
+                            error: "Database lookup error for matched medicine",
+                        });
+                        return;
                     } else {
                         medicineData = dbMed;
                     }
@@ -505,6 +538,8 @@ router.post("/extract", (req: Request, res: Response) => {
                     logger.error(
                         `Failed to lookup matched name ${matchedName} in database: ${lookupErr}`
                     );
+                    res.status(500).json({ error: "Database lookup error for matched medicine" });
+                    return;
                 }
             }
 
@@ -547,6 +582,14 @@ router.post("/extract", (req: Request, res: Response) => {
                 error: "OCR service is currently unavailable. Please verify manually.",
                 details: msg,
             });
+        } finally {
+            if (tempFilePath && fs.existsSync(tempFilePath)) {
+                try {
+                    fs.unlinkSync(tempFilePath);
+                } catch (err) {
+                    logger.error(`Failed to delete temp file ${tempFilePath}:`, err);
+                }
+            }
         }
     });
 });
@@ -564,8 +607,8 @@ function getLevenshteinDistance(a: string, b: string): number {
             } else {
                 matrix[i][j] = Math.min(
                     matrix[i - 1][j - 1] + 1, // substitution
-                    matrix[i][j - 1] + 1,     // insertion
-                    matrix[i - 1][j] + 1      // deletion
+                    matrix[i][j - 1] + 1, // insertion
+                    matrix[i - 1][j] + 1 // deletion
                 );
             }
         }
@@ -611,9 +654,12 @@ router.post("/match", async (req: Request, res: Response) => {
     }
 
     try {
+        const keyword = query.trim().split(/\s+/)[0];
         const { data, error } = await supabase
             .from("medicines")
-            .select("brand_name, generic_name");
+            .select("brand_name, generic_name")
+            .or(`brand_name.ilike.%${keyword}%,generic_name.ilike.%${keyword}%`)
+            .limit(100);
 
         if (error) {
             logger.error(`Database error during match: ${error.message}`);
@@ -627,11 +673,7 @@ router.post("/match", async (req: Request, res: Response) => {
         }
 
         const candidates = Array.from(
-            new Set(
-                data
-                    .flatMap((m) => [m.brand_name, m.generic_name])
-                    .filter(Boolean) as string[]
-            )
+            new Set(data.flatMap((m) => [m.brand_name, m.generic_name]).filter(Boolean) as string[])
         );
 
         const scored = candidates.map((name) => {
@@ -688,7 +730,9 @@ router.post("/verify-brand", async (req: Request, res: Response) => {
             .select(
                 "brand_name, generic_name, manufacturer, batch_number, expiry_date, cdsco_approval_status, is_counterfeit_alert"
             )
-            .or(`brand_name.ilike.%${escapeIlike(brandName)}%,generic_name.ilike.%${escapeIlike(brandName)}%`)
+            .or(
+                `brand_name.ilike.%${escapeIlike(brandName)}%,generic_name.ilike.%${escapeIlike(brandName)}%`
+            )
             .limit(1)
             .maybeSingle();
 
