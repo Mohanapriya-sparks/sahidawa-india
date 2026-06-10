@@ -113,7 +113,7 @@ const timelineSteps = [
 export default function HowItWorksPage() {
     return (
         <main className="min-h-screen overflow-x-hidden bg-gradient-to-b from-(--color-surface-page) via-emerald-500/[0.03] to-(--color-surface-page) text-(--color-text-primary)">
-            <PageHeader backHref="/" variant="light" />
+            <PageHeader backHref="/" variant="light" hideBackButton />
             {/* Hero Section */}
             <section className="relative px-6 pt-24 pb-20">
                 {/* Glow Effects */}
