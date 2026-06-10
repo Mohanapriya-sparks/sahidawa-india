@@ -2,20 +2,14 @@
 
 import React, { useState } from "react";
 import {
-    ShieldCheck,
     CheckCircle,
-    HelpCircle,
     ChevronRight,
     ChevronLeft,
     Printer,
     ArrowRight,
-    FileText,
-    Activity,
     Info,
     Check,
-    Sparkles,
 } from "lucide-react";
-import { Link } from "@/i18n/routing";
 import { PageHeader } from "../components/PageHeader";
 import { checkSchemeEligibility, type EligibleScheme } from "@/lib/api/alternatives";
 import { toast } from "sonner";
