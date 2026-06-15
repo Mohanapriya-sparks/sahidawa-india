@@ -34,6 +34,8 @@ export type ReportPayload = {
     pincode: string;
     latitude?: number;
     longitude?: number;
+    scannedBarcode?: string;
+    medicineId?: string;
 };
 
 export type SubmittedReport = {

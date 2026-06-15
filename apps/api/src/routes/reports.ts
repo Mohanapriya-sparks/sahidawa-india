@@ -62,6 +62,8 @@ const createReportSchema = z.object({
         .min(-180, "Longitude must be between -180 and 180")
         .max(180, "Longitude must be between -180 and 180")
         .optional(),
+    scannedBarcode: z.string().optional(),
+    medicineId: z.string().uuid().optional(),
 });
 
 const buildReportLocation = (latitude?: number, longitude?: number) => {
@@ -134,6 +136,8 @@ reportsRouter.post(
                     is_escalated: !validation.passed,
                     duplicate_group_id: validation.duplicateGroupId ?? null,
                     status: "pending",
+                    scanned_barcode: data.scannedBarcode ?? null,
+                    medicine_id: data.medicineId ?? null,
                 })
                 .select()
                 .single();
