@@ -109,6 +109,36 @@ describe("Twilio webhook signature verification", () => {
         expect(mockQueryBuilder.update).not.toHaveBeenCalled();
     });
 
+    it("accepts an https-signed request when TLS is terminated upstream of the proxy", async () => {
+        // No public-URL override: simulate a load balancer that terminates TLS
+        // and forwards plain http to the app (X-Forwarded-Proto: http), while
+        // Twilio signed the external https URL it actually called.
+        delete process.env.TWILIO_WEBHOOK_PUBLIC_URL;
+
+        const proxiedApp = express();
+        proxiedApp.set("trust proxy", true);
+        proxiedApp.use("/api/notifications", notificationsRouter);
+
+        const host = "api.sahidawa.in";
+        const params = { From: "+919876543210", Body: "STOP" };
+        const httpsSignature = computeTwilioSignature(
+            AUTH_TOKEN,
+            `https://${host}${WEBHOOK_PATH}`,
+            params
+        );
+
+        const response = await request(proxiedApp)
+            .post(WEBHOOK_PATH)
+            .type("form")
+            .set("Host", host)
+            .set("X-Forwarded-Proto", "http")
+            .set("X-Twilio-Signature", httpsSignature)
+            .send(params);
+
+        expect(response.status).toBe(200);
+        expect(response.text).toContain("unsubscribed");
+    });
+
     it("fails closed when TWILIO_AUTH_TOKEN is not configured", async () => {
         delete process.env.TWILIO_AUTH_TOKEN;
         const params = { From: "+919876543210", Body: "STOP" };

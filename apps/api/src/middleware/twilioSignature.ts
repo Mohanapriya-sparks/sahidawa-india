@@ -54,20 +54,28 @@ export function signaturesMatch(expected: string, provided: string): boolean {
 }
 
 /**
- * Reconstructs the exact public URL Twilio used to reach this endpoint.
+ * Builds the candidate public URL(s) Twilio may have used to reach this
+ * endpoint, in priority order.
  *
- * When the API sits behind a proxy/load balancer that rewrites the host, set
- * TWILIO_WEBHOOK_PUBLIC_URL to the externally visible origin (e.g.
- * "https://api.sahidawa.in"); the request path and query string are appended
- * to it. Otherwise the URL is derived from the forwarded request (the app sets
- * "trust proxy", so req.protocol and req.host honour X-Forwarded-* headers).
+ * Set TWILIO_WEBHOOK_PUBLIC_URL to the externally visible origin (e.g.
+ * "https://api.sahidawa.in") to pin reconstruction exactly; when present it is
+ * the only candidate. Otherwise the URL is derived from the request. The host
+ * comes from the (proxy-preserved) Host header, but the scheme is unreliable
+ * behind a proxy: nginx forwards X-Forwarded-Proto as its own $scheme, so if
+ * TLS is terminated upstream the request reaches the app as http even though
+ * Twilio signed the external https URL. We therefore try both https and http
+ * variants. This leaks nothing — every candidate still has to match the HMAC
+ * keyed with the secret auth token, which an attacker does not have.
  */
-function buildRequestUrl(req: Request): string {
+function buildCandidateUrls(req: Request): string[] {
     const publicBase = process.env.TWILIO_WEBHOOK_PUBLIC_URL?.trim();
     if (publicBase) {
-        return `${publicBase.replace(/\/+$/, "")}${req.originalUrl}`;
+        return [`${publicBase.replace(/\/+$/, "")}${req.originalUrl}`];
     }
-    return `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+
+    const host = req.get("host");
+    const schemes = Array.from(new Set([req.protocol, "https", "http"]));
+    return schemes.map((scheme) => `${scheme}://${host}${req.originalUrl}`);
 }
 
 /**
@@ -96,12 +104,16 @@ export function verifyTwilioSignature(req: Request, res: Response, next: NextFun
         return;
     }
 
-    const url = buildRequestUrl(req);
     const params = (req.body ?? {}) as Record<string, unknown>;
-    const expected = computeTwilioSignature(authToken, url, params);
+    const candidateUrls = buildCandidateUrls(req);
+    const isValid = candidateUrls.some((url) =>
+        signaturesMatch(computeTwilioSignature(authToken, url, params), signature)
+    );
 
-    if (!signaturesMatch(expected, signature)) {
-        logger.warn("Rejecting Twilio webhook request: invalid X-Twilio-Signature.", { url });
+    if (!isValid) {
+        logger.warn("Rejecting Twilio webhook request: invalid X-Twilio-Signature.", {
+            candidateUrls,
+        });
         res.status(403).send("Forbidden");
         return;
     }
