@@ -91,7 +91,6 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
     }
 
     const data = parsed.data;
-
     try {
         // Check for an existing pharmacy with the same licenseId before inserting.
         // Without this check concurrent or repeated requests can create duplicate
@@ -125,7 +124,7 @@ router.post("/", async (req: Request, res: Response, next: NextFunction) => {
                 district: data.district,
                 state: data.state,
                 phone_number: data.phone_number ?? null,
-                location: data.lng && data.lat ? `POINT(${data.lng} ${data.lat})` : null,
+                location: data.lat !== undefined && data.lng !== undefined ? `POINT(${data.lng} ${data.lat})` : null,
                 is_verified: false,
                 status: "pending",
             })
