@@ -150,7 +150,9 @@ describe("ExpiryTracker component", () => {
     });
 
     it("shows the success alert when the API returns ok: true", async () => {
-        (global.fetch as jest.Mock).mockResolvedValueOnce(makeJsonResponse({ tracked: true }, true));
+        (global.fetch as jest.Mock).mockResolvedValueOnce(
+            makeJsonResponse({ tracked: true }, true)
+        );
         const { user } = setup();
 
         await user.click(screen.getByRole("button", { name: /track expiry/i }));
@@ -174,9 +176,7 @@ describe("ExpiryTracker component", () => {
     });
 
     it("works correctly with different medicine props", () => {
-        render(
-            <ExpiryTracker medicineId="med-999" medicineName="Ibuprofen 400mg" />
-        );
+        render(<ExpiryTracker medicineId="med-999" medicineName="Ibuprofen 400mg" />);
         expect(screen.getByRole("heading", { name: "Ibuprofen 400mg" })).toBeInTheDocument();
     });
 });

@@ -42,43 +42,43 @@ The core of this feature is the new `apps/web/app/[locale]/signup/page.tsx` comp
 
 1.  **Route Definition**: A new dynamic route `/[locale]/signup` was created by adding `signup/page.tsx` under `apps/web/app/[locale]`.
 2.  **UI Structure and Styling**:
-    *   The page utilizes a `div` with `min-h-screen` and specific background gradients (`bg-[var(--color-surface-login)]`, `[background-image:radial-gradient(...)]`) to match the existing login page's aesthetic.
-    *   It includes a brand header with the SahiDawa logo (`ShieldCheck` icon) and text, consistent with our branding.
-    *   The main content is housed within a `div` styled with `rounded-3xl`, `border`, `bg-(--color-surface-page)`, and `shadow-xl` for a card-like appearance.
-    *   The page supports both Light and Dark themes through Tailwind CSS classes and CSS variables like `(--color-text-primary)`, `(--color-text-secondary)`, `(--color-border-muted)`, and `(--color-surface-page)`.
-    *   Responsiveness is ensured through flexible layouts and media queries inherent in Tailwind CSS.
+    - The page utilizes a `div` with `min-h-screen` and specific background gradients (`bg-[var(--color-surface-login)]`, `[background-image:radial-gradient(...)]`) to match the existing login page's aesthetic.
+    - It includes a brand header with the SahiDawa logo (`ShieldCheck` icon) and text, consistent with our branding.
+    - The main content is housed within a `div` styled with `rounded-3xl`, `border`, `bg-(--color-surface-page)`, and `shadow-xl` for a card-like appearance.
+    - The page supports both Light and Dark themes through Tailwind CSS classes and CSS variables like `(--color-text-primary)`, `(--color-text-secondary)`, `(--color-border-muted)`, and `(--color-surface-page)`.
+    - Responsiveness is ensured through flexible layouts and media queries inherent in Tailwind CSS.
 3.  **State Management**:
-    *   We use `useState` hooks for managing form inputs: `fullName`, `email`, `password`, `confirmPassword`.
-    *   Additional state variables `loading`, `error`, and `success` are used to provide real-time feedback to the user during form submission and API interactions.
-    *   `showPassword` and `showConfirmPassword` states control the visibility of password fields, toggled by `Eye` and `EyeOff` icons from `lucide-react`.
+    - We use `useState` hooks for managing form inputs: `fullName`, `email`, `password`, `confirmPassword`.
+    - Additional state variables `loading`, `error`, and `success` are used to provide real-time feedback to the user during form submission and API interactions.
+    - `showPassword` and `showConfirmPassword` states control the visibility of password fields, toggled by `Eye` and `EyeOff` icons from `lucide-react`.
 4.  **Internationalization (i18n)**:
-    *   The `useLocale()` and `useTranslations("SignUp")` hooks from `next-intl` are used to fetch the current locale and localized strings for the signup page.
-    *   New translation keys (e.g., `heading`, `description`, `googleButton`, `signUpPrompt`, `errors.*`, `success`, `successConfirmEmail`) have been added to all `apps/web/messages/*.json` files to support multiple Indian languages and English.
+    - The `useLocale()` and `useTranslations("SignUp")` hooks from `next-intl` are used to fetch the current locale and localized strings for the signup page.
+    - New translation keys (e.g., `heading`, `description`, `googleButton`, `signUpPrompt`, `errors.*`, `success`, `successConfirmEmail`) have been added to all `apps/web/messages/*.json` files to support multiple Indian languages and English.
 5.  **Supabase Integration**:
-    *   A Supabase client is initialized using `createBrowserClient(supabaseUrl, supabaseKey)`, where `supabaseUrl` and `supabaseKey` are retrieved from environment variables via `getSupabaseUrl()` and `getSupabaseAnonKey()`.
-    *   A check for `isMissingEnvVars` provides a user-facing warning if Supabase is not properly configured.
+    - A Supabase client is initialized using `createBrowserClient(supabaseUrl, supabaseKey)`, where `supabaseUrl` and `supabaseKey` are retrieved from environment variables via `getSupabaseUrl()` and `getSupabaseAnonKey()`.
+    - A check for `isMissingEnvVars` provides a user-facing warning if Supabase is not properly configured.
 6.  **Client-Side Validation**:
-    *   The `EMAIL_PATTERN` regex (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) is used to validate email format.
-    *   The `isStrongPassword` function enforces password complexity: minimum 8 characters, at least one uppercase letter, one lowercase letter, and one digit.
-    *   The `validateForm` function consolidates all validation rules (full name required, email required/valid, password required/strong, confirm password required, password mismatch) and returns an error message if any rule is violated.
+    - The `EMAIL_PATTERN` regex (`/^[^\s@]+@[^\s@]+\.[^\s@]+$/`) is used to validate email format.
+    - The `isStrongPassword` function enforces password complexity: minimum 8 characters, at least one uppercase letter, one lowercase letter, and one digit.
+    - The `validateForm` function consolidates all validation rules (full name required, email required/valid, password required/strong, confirm password required, password mismatch) and returns an error message if any rule is violated.
 7.  **Email/Password Registration (`handleSignUp`)**:
-    *   This asynchronous function is triggered on form submission.
-    *   It first performs client-side validation using `validateForm()`.
-    *   If validation passes, it calls `supabase.auth.signUp({ email, password, options: { data: { full_name }, emailRedirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
-    *   The `full_name` is passed in the `options.data` object, which Supabase can store as user metadata.
-    *   `emailRedirectTo` ensures that after email confirmation, the user is redirected to their locale-specific reports page (`/reports/me`).
-    *   Error messages from Supabase or generic errors are displayed using the `LiveMessage` component.
-    *   Upon successful registration, if a session is immediately available, the user is redirected to `/reports/me`. If email confirmation is required, a success message prompts the user to check their email.
+    - This asynchronous function is triggered on form submission.
+    - It first performs client-side validation using `validateForm()`.
+    - If validation passes, it calls `supabase.auth.signUp({ email, password, options: { data: { full_name }, emailRedirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
+    - The `full_name` is passed in the `options.data` object, which Supabase can store as user metadata.
+    - `emailRedirectTo` ensures that after email confirmation, the user is redirected to their locale-specific reports page (`/reports/me`).
+    - Error messages from Supabase or generic errors are displayed using the `LiveMessage` component.
+    - Upon successful registration, if a session is immediately available, the user is redirected to `/reports/me`. If email confirmation is required, a success message prompts the user to check their email.
 8.  **OAuth Registration (`handleGoogleSignUp`, `handleGithubSignUp`)**:
-    *   These functions are triggered by clicking the respective Google (`FcGoogle`) or GitHub (`FaGithub`) buttons.
-    *   They call `supabase.auth.signInWithOAuth({ provider: "google" | "github", options: { redirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
-    *   The `redirectTo` option ensures that after successful OAuth authentication, the user is redirected to their locale-specific reports page.
-    *   Errors during the OAuth flow are caught and displayed.
+    - These functions are triggered by clicking the respective Google (`FcGoogle`) or GitHub (`FaGithub`) buttons.
+    - They call `supabase.auth.signInWithOAuth({ provider: "google" | "github", options: { redirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
+    - The `redirectTo` option ensures that after successful OAuth authentication, the user is redirected to their locale-specific reports page.
+    - Errors during the OAuth flow are caught and displayed.
 9.  **Navigation Updates**:
-    *   `apps/web/app/[locale]/login/page.tsx` was updated to include a new `Link` component pointing to `/signup`, allowing bidirectional navigation between login and signup pages.
-    *   `apps/web/app/[locale]/components/Navbar.tsx` was modified to hide the global navigation bar when the user is on the `/signup` page, similar to the `/login` and `/health` pages, ensuring a focused authentication experience.
+    - `apps/web/app/[locale]/login/page.tsx` was updated to include a new `Link` component pointing to `/signup`, allowing bidirectional navigation between login and signup pages.
+    - `apps/web/app/[locale]/components/Navbar.tsx` was modified to hide the global navigation bar when the user is on the `/signup` page, similar to the `/login` and `/health` pages, ensuring a focused authentication experience.
 10. **Testing**:
-    *   A new Playwright test file, `apps/web/tests/signup-page.test.tsx`, was added to verify the functionality and UI of the signup page. Not documented in this PR what specific tests are included, but it implies coverage for form submission, validation, and navigation.
+    - A new Playwright test file, `apps/web/tests/signup-page.test.tsx`, was added to verify the functionality and UI of the signup page. Not documented in this PR what specific tests are included, but it implies coverage for form submission, validation, and navigation.
 
 ## Technical Decisions
 
@@ -94,72 +94,72 @@ The core of this feature is the new `apps/web/app/[locale]/signup/page.tsx` comp
 To re-implement the signup page functionality, a contributor would follow these steps:
 
 1.  **Create the Page Component**:
-    *   Create a new file `apps/web/app/[locale]/signup/page.tsx`.
-    *   Mark it as a client component by adding `"use client";` at the top.
-    *   Import necessary React hooks (`useState`), Next.js i18n hooks (`useLocale`, `useTranslations`), routing utilities (`Link`, `useRouter`), Supabase client (`createBrowserClient`), environment variable helpers (`getSupabaseUrl`, `getSupabaseAnonKey`), UI components (`LiveMessage`), and icons (`Mail`, `Lock`, `ShieldCheck`, `ArrowRight`, `AlertTriangle`, `Eye`, `EyeOff`, `User`, `FcGoogle`, `FaGithub`).
+    - Create a new file `apps/web/app/[locale]/signup/page.tsx`.
+    - Mark it as a client component by adding `"use client";` at the top.
+    - Import necessary React hooks (`useState`), Next.js i18n hooks (`useLocale`, `useTranslations`), routing utilities (`Link`, `useRouter`), Supabase client (`createBrowserClient`), environment variable helpers (`getSupabaseUrl`, `getSupabaseAnonKey`), UI components (`LiveMessage`), and icons (`Mail`, `Lock`, `ShieldCheck`, `ArrowRight`, `AlertTriangle`, `Eye`, `EyeOff`, `User`, `FcGoogle`, `FaGithub`).
 
 2.  **Initialize State**:
-    *   Declare `useState` variables for `fullName`, `email`, `password`, `confirmPassword` (all initialized to empty strings).
-    *   Declare `useState` variables for UI feedback: `loading` (boolean, `false`), `error` (string, `""`), `success` (string, `""`).
-    *   Declare `useState` variables for password visibility toggles: `showPassword` (boolean, `false`), `showConfirmPassword` (boolean, `false`).
+    - Declare `useState` variables for `fullName`, `email`, `password`, `confirmPassword` (all initialized to empty strings).
+    - Declare `useState` variables for UI feedback: `loading` (boolean, `false`), `error` (string, `""`), `success` (string, `""`).
+    - Declare `useState` variables for password visibility toggles: `showPassword` (boolean, `false`), `showConfirmPassword` (boolean, `false`).
 
 3.  **Supabase Client Setup**:
-    *   Inside the component, retrieve Supabase URL and key using `getSupabaseUrl()` and `getSupabaseAnonKey()`.
-    *   Initialize the Supabase client: `const supabase = createBrowserClient(supabaseUrl, supabaseKey);`.
-    *   Add a check for missing environment variables (`isMissingEnvVars`) to display a warning.
+    - Inside the component, retrieve Supabase URL and key using `getSupabaseUrl()` and `getSupabaseAnonKey()`.
+    - Initialize the Supabase client: `const supabase = createBrowserClient(supabaseUrl, supabaseKey);`.
+    - Add a check for missing environment variables (`isMissingEnvVars`) to display a warning.
 
 4.  **Implement Validation Logic**:
-    *   Define `EMAIL_PATTERN` regex.
-    *   Create an `isStrongPassword(password: string)` function to check for length, uppercase, lowercase, and digit requirements.
-    *   Create a `validateForm()` function that checks all input fields for presence, email format, password strength, and password matching. It should return an error string or `null`.
+    - Define `EMAIL_PATTERN` regex.
+    - Create an `isStrongPassword(password: string)` function to check for length, uppercase, lowercase, and digit requirements.
+    - Create a `validateForm()` function that checks all input fields for presence, email format, password strength, and password matching. It should return an error string or `null`.
 
 5.  **Implement Authentication Handlers**:
-    *   **`handleSignUp(e: React.FormEvent)`**:
-        *   Prevent default form submission (`e.preventDefault()`).
-        *   Set `loading` to `true`, clear `error` and `success`.
-        *   Perform `isMissingEnvVars` check.
-        *   Call `validateForm()`; if an error is returned, set `error` and return.
-        *   Call `await supabase.auth.signUp({ email: email.trim(), password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
-        *   Handle `signUpError` by setting `error`.
-        *   If `data?.session?.access_token` exists, set `success` and redirect using `router.push("/reports/me")`.
-        *   If `data?.user` exists but no session (email confirmation needed), set `success` with a confirmation message.
-        *   Catch generic errors and set `error`.
-        *   Finally, set `loading` to `false`.
-    *   **`handleGoogleSignUp()` and `handleGithubSignUp()`**:
-        *   Set `loading` to `true`, clear `error` and `success`.
-        *   Perform `isMissingEnvVars` check.
-        *   Call `await supabase.auth.signInWithOAuth({ provider: "google" | "github", options: { redirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
-        *   Handle `oauthError` by setting `error`.
-        *   Catch generic errors and set `error`.
-        *   Finally, set `loading` to `false`.
+    - **`handleSignUp(e: React.FormEvent)`**:
+        - Prevent default form submission (`e.preventDefault()`).
+        - Set `loading` to `true`, clear `error` and `success`.
+        - Perform `isMissingEnvVars` check.
+        - Call `validateForm()`; if an error is returned, set `error` and return.
+        - Call `await supabase.auth.signUp({ email: email.trim(), password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
+        - Handle `signUpError` by setting `error`.
+        - If `data?.session?.access_token` exists, set `success` and redirect using `router.push("/reports/me")`.
+        - If `data?.user` exists but no session (email confirmation needed), set `success` with a confirmation message.
+        - Catch generic errors and set `error`.
+        - Finally, set `loading` to `false`.
+    - **`handleGoogleSignUp()` and `handleGithubSignUp()`**:
+        - Set `loading` to `true`, clear `error` and `success`.
+        - Perform `isMissingEnvVars` check.
+        - Call `await supabase.auth.signInWithOAuth({ provider: "google" | "github", options: { redirectTo: `${window.location.origin}/${locale}/reports/me` } })`.
+        - Handle `oauthError` by setting `error`.
+        - Catch generic errors and set `error`.
+        - Finally, set `loading` to `false`.
 
 6.  **Design the UI**:
-    *   Structure the page with a main container, brand header, and a central card for the form.
-    *   Include `LiveMessage` components for `success` and `error` states, styled appropriately.
-    *   Add buttons for Google and GitHub OAuth, calling their respective handlers.
-    *   Create a `<form>` element for email/password registration.
-    *   Inside the form, include input fields for Full Name, Email, Password, and Confirm Password. Use `lucide-react` icons (e.g., `User`, `Mail`, `Lock`) as prefixes.
-    *   For password fields, add a toggle button with `Eye` and `EyeOff` icons to switch input type between `password` and `text`.
-    *   Include a submit button for email/password registration.
-    *   Add footer links for navigation to the Login page (`Link href="/login"`) and Home page (`Link href="/"`).
+    - Structure the page with a main container, brand header, and a central card for the form.
+    - Include `LiveMessage` components for `success` and `error` states, styled appropriately.
+    - Add buttons for Google and GitHub OAuth, calling their respective handlers.
+    - Create a `<form>` element for email/password registration.
+    - Inside the form, include input fields for Full Name, Email, Password, and Confirm Password. Use `lucide-react` icons (e.g., `User`, `Mail`, `Lock`) as prefixes.
+    - For password fields, add a toggle button with `Eye` and `EyeOff` icons to switch input type between `password` and `text`.
+    - Include a submit button for email/password registration.
+    - Add footer links for navigation to the Login page (`Link href="/login"`) and Home page (`Link href="/"`).
 
 7.  **Update Navigation Components**:
-    *   Modify `apps/web/app/[locale]/components/Navbar.tsx`: Add `pathname === "/signup"` to the condition that returns `null` for the Navbar, hiding it on the signup page.
-    *   Modify `apps/web/app/[locale]/login/page.tsx`: Add a new paragraph with a `Link` to `/signup` (e.g., `{t("signUpPrompt")} <Link href="/signup">{t("signUpLink")}</Link>`).
+    - Modify `apps/web/app/[locale]/components/Navbar.tsx`: Add `pathname === "/signup"` to the condition that returns `null` for the Navbar, hiding it on the signup page.
+    - Modify `apps/web/app/[locale]/login/page.tsx`: Add a new paragraph with a `Link` to `/signup` (e.g., `{t("signUpPrompt")} <Link href="/signup">{t("signUpLink")}</Link>`).
 
 8.  **Add Internationalization Keys**:
-    *   For every string displayed on the signup page (headings, descriptions, button texts, error messages, success messages, prompts), add corresponding keys and translations to all `apps/web/messages/*.json` files.
+    - For every string displayed on the signup page (headings, descriptions, button texts, error messages, success messages, prompts), add corresponding keys and translations to all `apps/web/messages/*.json` files.
 
 9.  **Write Tests**:
-    *   Create `apps/web/tests/signup-page.test.tsx` using Playwright.
-    *   Write tests to:
-        *   Verify page loads correctly.
-        *   Check for presence of form fields and buttons.
-        *   Test client-side validation for invalid email, weak password, password mismatch.
-        *   Simulate form submission for email/password registration (mocking Supabase if necessary for unit tests, or end-to-end for integration).
-        *   Verify redirection after successful registration.
-        *   Test OAuth button clicks (at least verifying the redirect to the OAuth provider).
-        *   Verify responsiveness and theme switching (if possible with Playwright).
+    - Create `apps/web/tests/signup-page.test.tsx` using Playwright.
+    - Write tests to:
+        - Verify page loads correctly.
+        - Check for presence of form fields and buttons.
+        - Test client-side validation for invalid email, weak password, password mismatch.
+        - Simulate form submission for email/password registration (mocking Supabase if necessary for unit tests, or end-to-end for integration).
+        - Verify redirection after successful registration.
+        - Test OAuth button clicks (at least verifying the redirect to the OAuth provider).
+        - Verify responsiveness and theme switching (if possible with Playwright).
 
 ## Impact on System Architecture
 
@@ -177,29 +177,29 @@ This change significantly expands SahiDawa's user authentication capabilities an
 The implementation of the signup page was verified through a combination of automated and manual testing:
 
 1.  **Automated Testing**: A new Playwright test suite, `apps/web/tests/signup-page.test.tsx`, was introduced. This suite is responsible for:
-    *   Navigating to the `/signup` page.
-    *   Verifying the presence of all required form fields (Full Name, Email, Password, Confirm Password) and OAuth buttons.
-    *   Testing client-side validation rules, including:
-        *   Empty field submissions.
-        *   Invalid email format.
-        *   Weak password (not meeting length, uppercase, lowercase, number requirements).
-        *   Password and confirm password mismatch.
-    *   Simulating user input and form submission for email/password registration (though specific details of Supabase mocking for these tests are not documented in this PR).
-    *   Verifying successful redirection to the user's reports page (`/reports/me`) upon successful registration.
-    *   Checking for the display of appropriate success or error messages using the `LiveMessage` component.
-    *   Not documented in this PR are specific tests for OAuth provider interaction beyond initial button clicks and redirects.
+    - Navigating to the `/signup` page.
+    - Verifying the presence of all required form fields (Full Name, Email, Password, Confirm Password) and OAuth buttons.
+    - Testing client-side validation rules, including:
+        - Empty field submissions.
+        - Invalid email format.
+        - Weak password (not meeting length, uppercase, lowercase, number requirements).
+        - Password and confirm password mismatch.
+    - Simulating user input and form submission for email/password registration (though specific details of Supabase mocking for these tests are not documented in this PR).
+    - Verifying successful redirection to the user's reports page (`/reports/me`) upon successful registration.
+    - Checking for the display of appropriate success or error messages using the `LiveMessage` component.
+    - Not documented in this PR are specific tests for OAuth provider interaction beyond initial button clicks and redirects.
 
 2.  **Manual Verification**:
-    *   **Visual Inspection**: Screenshots provided in the PR description demonstrate the page's appearance in Light Mode, Dark Mode, and its mobile responsive layout. This confirms that the UI adheres to design specifications and is accessible across various devices and themes.
-    *   **Functional Testing**: Manual tests were performed to:
-        *   Successfully register a new user via email/password.
-        *   Verify the email confirmation flow (if applicable).
-        *   Successfully register a new user via Google OAuth.
-        *   Successfully register a new user via GitHub OAuth.
-        *   Confirm correct redirection after both email/password and OAuth registrations.
-        *   Test all client-side validation messages for accuracy and promptness.
-        *   Verify bidirectional navigation between the Login and Signup pages.
-        *   Check that the Navbar is correctly hidden on the `/signup` page.
-        *   Verify localization by switching locales and ensuring all text elements are correctly translated.
+    - **Visual Inspection**: Screenshots provided in the PR description demonstrate the page's appearance in Light Mode, Dark Mode, and its mobile responsive layout. This confirms that the UI adheres to design specifications and is accessible across various devices and themes.
+    - **Functional Testing**: Manual tests were performed to:
+        - Successfully register a new user via email/password.
+        - Verify the email confirmation flow (if applicable).
+        - Successfully register a new user via Google OAuth.
+        - Successfully register a new user via GitHub OAuth.
+        - Confirm correct redirection after both email/password and OAuth registrations.
+        - Test all client-side validation messages for accuracy and promptness.
+        - Verify bidirectional navigation between the Login and Signup pages.
+        - Check that the Navbar is correctly hidden on the `/signup` page.
+        - Verify localization by switching locales and ensuring all text elements are correctly translated.
 
 Edge cases considered include missing environment variables (which now display a user-friendly warning), network errors during Supabase calls, and various invalid input scenarios handled by client-side validation.

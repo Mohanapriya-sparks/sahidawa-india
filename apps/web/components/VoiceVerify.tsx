@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
 import { useTranslations } from "next-intl";
+import { useVoiceVerification } from "../src/hooks/useVoiceVerification";
 
 type VerificationResult = {
     medicine_name_original: string;
@@ -52,158 +52,18 @@ export default function VoiceVerify() {
         },
     };
 
-    const [isRecording, setIsRecording] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [result, setResult] = useState<ApiResponse | null>(null);
-    const [error, setError] = useState<string | null>(null);
-    const [audioLevel, setAudioLevel] = useState(0);
+    const {
+        isRecording,
+        isLoading,
+        audioLevel,
+        result,
+        error: hookError,
+        startRecording,
+        stopRecording,
+        reset,
+    } = useVoiceVerification();
 
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const chunksRef = useRef<Blob[]>([]);
-    const animFrameRef = useRef<number | null>(null);
-    const analyserRef = useRef<AnalyserNode | null>(null);
-    const audioContextRef = useRef<AudioContext | null>(null);
-    const streamRef = useRef<MediaStream | null>(null);
-    const isMountedRef = useRef(true);
-
-    const cleanupRecording = useCallback(() => {
-        // Stop animation frame
-        if (animFrameRef.current !== null) {
-            cancelAnimationFrame(animFrameRef.current);
-            animFrameRef.current = null;
-        }
-
-        // Close AudioContext
-        if (audioContextRef.current) {
-            if (audioContextRef.current.state !== "closed") {
-                audioContextRef.current.close().catch((err) => {
-                    console.error("Failed to close AudioContext:", err);
-                });
-            }
-            audioContextRef.current = null;
-        }
-
-        // Stop stream tracks
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach((track) => {
-                if (track.readyState === "live") {
-                    track.stop();
-                }
-            });
-            streamRef.current = null;
-        }
-
-        // Reset level
-        setAudioLevel(0);
-    }, []);
-
-    useEffect(() => {
-        isMountedRef.current = true;
-        return () => {
-            isMountedRef.current = false;
-            cleanupRecording();
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-                mediaRecorderRef.current.stop();
-            }
-        };
-    }, [cleanupRecording]);
-
-    const startRecording = useCallback(async () => {
-        setError(null);
-        setResult(null);
-
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            streamRef.current = stream;
-
-            // Visualize audio level
-            const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
-            audioContextRef.current = audioCtx;
-            const source = audioCtx.createMediaStreamSource(stream);
-            const analyser = audioCtx.createAnalyser();
-            analyser.fftSize = 256;
-            source.connect(analyser);
-            analyserRef.current = analyser;
-
-            const draw = () => {
-                if (
-                    !isMountedRef.current ||
-                    !audioContextRef.current ||
-                    audioContextRef.current.state === "closed"
-                )
-                    return;
-                const data = new Uint8Array(analyser.frequencyBinCount);
-                analyser.getByteFrequencyData(data);
-                const avg = data.reduce((a, b) => a + b, 0) / data.length;
-                setAudioLevel(avg / 128); // normalize 0–1
-                animFrameRef.current = requestAnimationFrame(draw);
-            };
-            draw();
-
-            // Start MediaRecorder
-            const recorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
-            chunksRef.current = [];
-
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunksRef.current.push(e.data);
-            };
-
-            recorder.onstop = async () => {
-                cleanupRecording();
-                const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-                await sendAudioToApi(blob);
-            };
-
-            recorder.start();
-            mediaRecorderRef.current = recorder;
-            setIsRecording(true);
-        } catch {
-            setError(t("errorMicDenied"));
-        }
-    }, [cleanupRecording, t]);
-
-    const stopRecording = useCallback(() => {
-        if (mediaRecorderRef.current && isRecording) {
-            mediaRecorderRef.current.stop();
-            setIsRecording(false);
-        }
-    }, [isRecording]);
-
-    const sendAudioToApi = async (blob: Blob) => {
-        if (!isMountedRef.current) return;
-        setIsLoading(true);
-        try {
-            const form = new FormData();
-            form.append("audio", blob, "recording.webm");
-
-            const res = await fetch("/api/medicine/verify-voice", {
-                method: "POST",
-                body: form,
-            });
-
-            const data: ApiResponse = await res.json();
-
-            if (!isMountedRef.current) return;
-
-            if (!res.ok || !data.success) {
-                setError(data.error || t("errorNetwork"));
-            } else {
-                setResult(data);
-            }
-        } catch {
-            if (!isMountedRef.current) return;
-            setError(t("errorNetwork"));
-        } finally {
-            if (isMountedRef.current) {
-                setIsLoading(false);
-            }
-        }
-    };
-
-    const reset = () => {
-        setResult(null);
-        setError(null);
-    };
+    const error = hookError;
 
     const statusConfig = result ? STATUS_CONFIG[result.verification.status] : null;
 
@@ -271,7 +131,6 @@ export default function VoiceVerify() {
                 <div
                     className={`rounded-2xl border-2 ${statusConfig.border} ${statusConfig.bg} space-y-4 p-5`}
                 >
-                    {/* Status Badge */}
                     <div className="flex items-center justify-between">
                         <span className={`text-lg font-bold ${statusConfig.text}`}>
                             {statusConfig.label}
@@ -286,7 +145,6 @@ export default function VoiceVerify() {
                         </span>
                     </div>
 
-                    {/* Medicine name in regional script */}
                     <div className="space-y-1">
                         <p className="text-xs tracking-wide text-gray-400 uppercase">
                             {t("scriptLabel", { script: result.script })}
@@ -303,7 +161,6 @@ export default function VoiceVerify() {
                         )}
                     </div>
 
-                    {/* Details */}
                     <div className="grid grid-cols-2 gap-3 text-sm">
                         <div>
                             <p className="text-xs text-gray-400">{t("manufacturerLabel")}</p>
@@ -331,7 +188,6 @@ export default function VoiceVerify() {
                         </div>
                     </div>
 
-                    {/* Warnings */}
                     {result.verification.warnings.length > 0 && (
                         <div className="space-y-1 rounded-lg bg-white/60 p-3">
                             <p className="text-xs font-semibold text-gray-500 uppercase">
@@ -345,7 +201,6 @@ export default function VoiceVerify() {
                         </div>
                     )}
 
-                    {/* Try again */}
                     <button
                         onClick={reset}
                         className="w-full rounded-xl bg-gray-100 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-200"
@@ -355,7 +210,6 @@ export default function VoiceVerify() {
                 </div>
             )}
 
-            {/* Fallback text input */}
             {!result && !isRecording && (
                 <div className="text-center">
                     <p className="text-xs text-gray-400">
