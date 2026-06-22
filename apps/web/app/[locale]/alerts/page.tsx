@@ -27,6 +27,7 @@ import { toast } from "sonner";
 import { useInView } from "react-intersection-observer";
 
 // Debounce hook for search inputs - prevents API calls on every keystroke
+// Debounce hook for search inputs
 function useDebounce(value: string, delay: number = 300) {
     const [debouncedValue, setDebouncedValue] = useState(value);
 
