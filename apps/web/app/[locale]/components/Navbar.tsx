@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import Image from "next/image";
 import { MessageCircle } from "lucide-react";
 import { Link, usePathname } from "@/i18n/routing";
@@ -21,6 +21,8 @@ export default function Navbar() {
     const pathname = usePathname();
     const tHome = useTranslations("Home");
     const { session, isLoading: authLoading } = useSession();
+
+    const supabase = useMemo(() => createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey()), []);
 
     // UI States
     const [isNavVisible, setIsNavVisible] = useState(true);
@@ -55,7 +57,6 @@ export default function Navbar() {
         setIsMenuOpen(false);
         try {
             await fetch("/api/auth/signout", { method: "POST" });
-            const supabase = createBrowserClient(getSupabaseUrl(), getSupabaseAnonKey());
             await supabase.auth.signOut();
         } catch (error) {
             console.error("Logout error:", error);
