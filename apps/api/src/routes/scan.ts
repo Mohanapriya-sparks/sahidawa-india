@@ -11,7 +11,7 @@ import { uploadRateLimiter } from "../middleware/uploadRateLimit";
 import { scanQueryLimiter } from "../middleware/rateLimit";
 import { redisClient } from "../utils/redis";
 
-import { escapePostgrest, buildOrConditions } from "../utils/db";
+import { escapeIlike, escapePostgrest, buildOrConditions } from "../utils/db";
 
 const router = Router();
 
