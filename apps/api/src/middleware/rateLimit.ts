@@ -131,3 +131,17 @@ export const analyticsLimiter = createLimiter({
     message: "Too many analytics requests. Please try again later.",
     prefix: "analytics",
 });
+/** Medicine tracking endpoints — throttle to prevent runaway clients from spamming database lookups/inserts. */
+export const trackingLimiter = rateLimit({
+    skip: () => process.env.NODE_ENV === "test",
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    store: buildStore("tracking"),
+    handler: (_req, res) => {
+        res.status(429).json({
+            error: "Too many tracking requests. Please try again later.",
+        });
+    },
+});
